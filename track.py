@@ -22,7 +22,7 @@ from trackers import ByteTrackTracker
 DETECTION_THRESHOLD = 0.10  # これ未満の検出は捨てる。低信頼側もByteTrackの2段目照合へ渡すため低めにする
 HIGH_CONF_THRESHOLD = 0.25  # ByteTrackの高信頼／低信頼の境界
 TRACK_ACTIVATION_THRESHOLD = 0.25  # 新規IDを作る最低スコア（既定0.7では小さい人物にIDが付きにくい）
-LOST_TRACK_BUFFER = 30  # 見失ってもIDを保持するフレーム数
+LOST_TRACK_BUFFER = 30  # 見失ってもIDを保持する長さ（trackersでは30fps換算。25fpsでも約1秒）
 TRACE_LENGTH = 30  # 軌跡として描く直近フレーム数
 CSV_HEADER = ["frame_index", "timestamp_sec", "track_id", "x1", "y1", "x2", "y2", "confidence"]
 
@@ -94,6 +94,12 @@ def main() -> None:
     if actual_start != start_frame:
         fail(f"開始フレームへ移動できません（要求 {start_frame} / 実際 {actual_start}）")
 
+    # モデルと追跡器は1回だけ作り、全フレームを同じインスタンスへ順に渡す。
+    # 読込失敗で中途半端な出力先を残さないよう、出力先の作成より前に読み込む
+    t0 = time.perf_counter()
+    model = RFDETRSmall(device="cpu")
+    load_sec = time.perf_counter() - t0
+
     output_dir.mkdir(parents=True, exist_ok=True)
     video_path = output_dir / "annotated.mp4"
     csv_path = output_dir / "tracks.csv"
@@ -104,10 +110,6 @@ def main() -> None:
     print(f"入力: {input_path} {width}x{height} {fps:.3f}fps 全{total_frames}フレーム")
     print(f"区間: フレーム {start_frame}〜{end_frame - 1}（{end_frame - start_frame}フレーム）")
 
-    # モデルと追跡器は1回だけ作り、全フレームを同じインスタンスへ順に渡す
-    t0 = time.perf_counter()
-    model = RFDETRSmall(device="cpu")
-    load_sec = time.perf_counter() - t0
     person_id = person_class_id()
     tracker = ByteTrackTracker(
         lost_track_buffer=LOST_TRACK_BUFFER,
@@ -175,12 +177,16 @@ def main() -> None:
     # OpenCVで書けても読めるとは限らないため、開き直してフレーム数を確認する
     check = cv2.VideoCapture(str(video_path))
     reread_frames = int(check.get(cv2.CAP_PROP_FRAME_COUNT)) if check.isOpened() else 0
+    reread_fps = check.get(cv2.CAP_PROP_FPS) if check.isOpened() else 0.0
     check.release()
 
     print(f"モデル読込: {load_sec:.1f}秒 / 処理: {process_sec:.1f}秒"
           f"（{process_sec / max(frames_done, 1):.2f}秒/フレーム）")
-    print(f"処理フレーム: {frames_done} / 再読込フレーム: {reread_frames} / CSV行: {csv_rows} / ID数: {len(ids_seen)}")
+    print(f"処理フレーム: {frames_done}（要求 {end_frame - start_frame}） / 再読込フレーム: {reread_frames}"
+          f" / 再読込fps: {reread_fps:.3f} / CSV行: {csv_rows} / ID数: {len(ids_seen)}")
     print(f"出力: {video_path} , {csv_path}")
+    if frames_done == 0:
+        fail("フレームを1枚も読み込めませんでした")
     if reread_frames != frames_done:
         fail("出力動画のフレーム数が処理数と一致しません")
 
