@@ -10,6 +10,14 @@
 
 `README.md` → `IMPLEMENTATION.md`。会話の過去資料を探したり、技術選定をやり直したりする必要はない。
 
+## global資産との関係
+
+global（`~/.claude/`）の重い開発フローはこのPoCには使わない。`.claude/skills/` の固有版を優先する。
+
+- Git: `github-workflow`（固有版）。Issue・PR・worktree・2段レビューなしでローカルコミットまで。
+- 動作確認: `test-and-review`（固有版）。段階実行→出力確認→`RESULT.md`。
+- 作業ログは別に作らず`RESULT.md`に集約する。TaskCreateによるチェックリストは任意。
+
 ## 作業範囲
 
 - WSL・CPU限定。`.venv`内で、RF-DETR Small＋ByteTrackの1通りを実装する。
