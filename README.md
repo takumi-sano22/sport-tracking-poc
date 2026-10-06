@@ -1,0 +1,130 @@
+# sport-tracking-poc
+
+**サッカー動画に人物の枠・仮のID・短い軌跡を付けるだけの、使い捨てPoC。**
+
+本格版は別リポジトリで作る。このリポジトリでは、拡張性や精度向上を追わず、最小構成の動きと限界を一度見る。
+
+> 現在はClaude Codeへの引き継ぎ用ドキュメントのみ。実装・動画の取得・実動画での動作確認はまだ行っていない。
+> 以下の`track.py`のコマンドは、これから実装するインターフェース。
+
+## 決定済み
+
+| 項目 | 今回の方針 |
+|---|---|
+| 配置 | `takumi-sano22/sport-tracking-poc` / public |
+| 実行 | 手元のWSL / Linux、CPU、Python仮想環境 |
+| 素材 | SoccerTrack v2のMOT用クリップ1本。Hugging Faceへのログイン・条件同意は本人が行う |
+| 初期構成 | RF-DETR Small → `trackers`のByteTrack → Supervision / OpenCVで描画・保存 |
+| 対象 | 汎用の`person`検出。選手と審判・スタッフの区別はしない |
+| 処理区間 | まず1フレーム、次に3秒、動いたら15秒。CPUで重ければ3〜5秒の結果で終えてよい |
+| 結果 | ID・軌跡付きMP4、画面座標のCSV、短い`RESULT.md` |
+| 対象外 | 学習、Re-ID、背番号・氏名、ボール、チーム分類、ピッチ座標、複数カメラ、Web/API/DB、Docker、CI/CD、クラウド、ベンチマーク |
+
+「IDが付いた」と「正しく同じ人物を追えた」は別。IDの入れ替わり・見落としも結果として記録する。
+
+## 1. リポジトリをWSLへcloneする
+
+このリポジトリはすでに作成済み。WSLの任意の作業場所へcloneする。
+
+```bash
+mkdir -p ~/project
+cd ~/project
+git clone https://github.com/takumi-sano22/sport-tracking-poc.git
+cd sport-tracking-poc
+```
+
+GitHub CLIを使う場合は次でもよい。
+
+```bash
+gh repo clone takumi-sano22/sport-tracking-poc ~/project/sport-tracking-poc
+cd ~/project/sport-tracking-poc
+```
+
+## 2. Claude Codeへ渡す
+
+このフォルダでClaude Codeを開き、`START_CLAUDE.txt`を渡す。
+最初に`CLAUDE.md`と`IMPLEMENTATION.md`を読み、実装から短い実動画の実行まで進めてもらう。
+素材への同意・認証が未完了でも、コードの作成や入出力のテストは先に進めてよい。
+
+## 3. 素材の同意・ログイン（本人の操作）
+
+[SoccerTrack v2の配布ページ][s1]へブラウザでログインし、表示される利用条件・連絡先共有を確認して同意する。
+認証トークンをClaude Codeの会話やGitHubへ貼らない。
+
+Claude Codeが作った`.venv`を使う。まだなければ、次のように作れる。
+
+```bash
+python3 -m venv .venv  # 未作成の場合だけ
+source .venv/bin/activate
+python -m pip install -U huggingface_hub
+hf auth login
+hf auth whoami
+```
+
+`hf auth login`の案内に従って本人が認証する。トークン入力方式なら読み取り用を使い、
+Git認証情報への登録は不要。ブラウザでのデータセット同意とCLIの認証は別の操作。[s3]
+
+## 4. 取得するのは1本だけ
+
+対象は`mot/clips/118577.mp4`。公式一覧の表示は約270 MB。[s2]
+データセット全体をclone / downloadしない。正解アノテーションも今回の実行には不要。
+素材を取得するのは条件同意・認証後とする。
+
+```bash
+mkdir -p data
+hf download atomscott/soccertrack-v2 mot/clips/118577.mp4 \
+  --repo-type dataset --local-dir data
+```
+
+保存先：`data/mot/clips/118577.mp4`。取得日は`RESULT.md`へ記録する。
+権限エラー時は本人の同意・ログイン状態を確認し、別のミラーで回避しない。
+ファイルの配布構成が変わった場合は公式一覧を再確認し、MOTクリップ1本だけを選び直して記録する。
+
+## 5. 実装後の実行例
+
+```bash
+source .venv/bin/activate
+
+# 動作確認。元クリップの先頭から3秒間、フレームを間引かず処理する。
+python track.py --input data/mot/clips/118577.mp4 \
+  --start 0 --duration 3 --output outputs/smoke
+
+# 動いたら15秒。遅すぎる場合は3〜5秒で止め、実行時間を記録してよい。
+python track.py --input data/mot/clips/118577.mp4 \
+  --start 0 --duration 15 --output outputs/demo
+```
+
+`outputs/<実行名>/annotated.mp4`と`tracks.csv`を確認する。
+音声は不要。動画再生にWSLのGUIは必須にせず、保存したMP4をWindows側で開けばよい。
+`RESULT.md`には再実行コマンド、実行時間、観察した問題を短く残す。
+
+## ソースと利用条件
+
+確認日：2026-10-06。下記は配布元・公式資料で確認した範囲であり、実行検証済みという意味ではない。
+実装時に使ったパッケージ版・重み名を固定して記録する。
+
+| 対象 | 確認した内容 |
+|---|---|
+| SoccerTrack v2 [s1][s2] | データはCC BY 4.0表示。取得にはログイン・条件同意が必要。MOT用の短い動画を配布 |
+| RF-DETR [s4] | オープンソースコードとApache指定モデルを使う。Smallを対象とし、Plusや別条件の重みは使わない |
+| RF-DETR Small API [s5] | 検出出力は`supervision.Detections`。RGB入力とクラス名の対応を確認する |
+| Roboflow `trackers` [s6] | Apache-2.0のByteTrack再実装。`ByteTrackTracker.update(detections)`で接続 |
+| Supervision [s7] | MIT。描画・検出データの共通表現に使用 |
+| HF CLI [s3] / GitHub CLI [s8] / PyTorch [s9] | 取得・認証、新規リポジトリ作成、CPU実行環境の公式手順 |
+
+素材へのクレジット：SoccerTrack v2 — Atom Scott, Ikuma Uchida, Kento Kuroda, Yufi Kim, Keisuke Fujii。
+データセット：[配布元][s1]、論文：[SoccerTrack v2][s10]、ライセンス：[CC BY 4.0][s11]。
+PoC出力では区間抽出、人物枠・ID・軌跡の重畳を行う。再生用に形式を変えた場合はその変更も記録する。
+素材・重み・出力動画はGitへ入れない。出力を別途共有する際は、出典・ライセンス・変更内容も添える。
+
+[s1]: https://huggingface.co/datasets/atomscott/soccertrack-v2
+[s2]: https://huggingface.co/datasets/atomscott/soccertrack-v2/tree/main/mot/clips
+[s3]: https://huggingface.co/docs/huggingface_hub/guides/cli
+[s4]: https://github.com/roboflow/rf-detr
+[s5]: https://rfdetr.roboflow.com/reference/small/
+[s6]: https://github.com/roboflow/trackers
+[s7]: https://github.com/roboflow/supervision
+[s8]: https://cli.github.com/manual/gh_repo_create
+[s9]: https://pytorch.org/get-started/locally/
+[s10]: https://arxiv.org/abs/2508.01802
+[s11]: https://creativecommons.org/licenses/by/4.0/
