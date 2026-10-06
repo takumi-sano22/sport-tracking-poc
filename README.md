@@ -19,7 +19,8 @@
 | 処理区間 | まず1フレーム、次に3秒、動いたら15秒。CPUで重ければ3〜5秒の結果で終えてよい |
 | 結果 | ID・軌跡付きMP4、画面座標のCSV、短い`RESULT.md` |
 | 任意 | 出力（MP4・CSV）を眺める結果ビューア。静的HTML 1画面のみ |
-| 対象外 | 学習、Re-ID、背番号・氏名、ボール、チーム分類、ピッチ座標、複数カメラ、サーバー/API/DB、Docker、CI/CD、クラウド、ベンチマーク |
+| ピッチ座標 | #11で追加。配布元のキャリブレーションで足元を俯瞰xy（m）へ変換し、正解と比較（§8） |
+| 対象外 | 学習、Re-ID、背番号・氏名、ボール、チーム分類、複数カメラ、サーバー/API/DB、Docker、CI/CD、クラウド、ベンチマーク |
 | Claude Code設定 | `CLAUDE.md`と`.claude/`（PoC用に縮小したskill・権限設定）。詳細は`CLAUDE.md` |
 
 「IDが付いた」と「正しく同じ人物を追えた」は別。IDの入れ替わり・見落としも結果として記録する。
@@ -140,6 +141,46 @@ FF=$(python -c "import imageio_ffmpeg as i; print(i.get_ffmpeg_exe())")
 `viewer.html`をブラウザで直接開き（サーバー不要）、`annotated_h264.mp4`と`tracks.csv`をファイル選択で読み込む。
 表示するもの：動画、集計（CSV行数・仮ID数など）、表示中のフレームのID、ID一覧（行をクリックすると、そのIDの最初のフレームへ移動）。
 `--start`を0以外で実行した場合は、画面の「開始秒」を合わせる。変換は画質を落とす再エンコードで、内容（枠・ID）は変えない。
+
+## 8. ピッチ座標（俯瞰xy）への変換（#11）
+
+`track.py`の`tracks.csv`の足元の点（枠の下辺の中央）を、ピッチを上から見た座標（m）へ変換する。
+座標系はSoccerTrack v2の規約に合わせる：105m×68m、原点はセンターサークル、xはメインカメラから見て右向き、yはカメラ側のタッチライン向きが正。
+
+変換：足元の画素 → 魚眼の歪み補正（配布元のK・D）→ 配布元のホモグラフィの逆行列 → 手作業で付けられた65点のキーポイントとの残差を薄板スプライン（TPS）で補正。
+
+### 追加の素材（本人の認証済みの環境で取得）
+
+```bash
+source .venv/bin/activate
+# キャリブレーション（小さい。必須）
+hf download atomscott/soccertrack-v2 \
+  raw/118577/118577_camera_intrinsics.npz raw/118577/118577_homography.npy raw/118577/118577_keypoints.json \
+  --repo-type dataset --local-dir data
+# 評価用の正解（eval_pitch.py を使う場合だけ。mot は 6MB、gsr の前半は約2.9GB）
+hf download atomscott/soccertrack-v2 mot/118577.txt gsr/118577/118577_1st.json --repo-type dataset --local-dir data
+```
+
+`camera_intrinsics.npz`のrvecs/tvecsはpickle形式のため読まない（`allow_pickle`を使わない）。
+
+### 実行
+
+```bash
+python pitch.py --tracks outputs/demo/tracks.csv --calib data/raw/118577 \
+  --video data/mot/clips/118577.mp4 --start 0 --output outputs/demo_pitch
+python eval_pitch.py --gsr data/gsr/118577/118577_1st.json --mot data/mot/118577.txt \
+  --calib data/raw/118577 --pitch-tracks outputs/demo_pitch/pitch_tracks.csv --output outputs/demo_eval
+```
+
+| 出力 | 内容 |
+|---|---|
+| `pitch_tracks.csv` | frame_index, timestamp_sec, track_id, x_m, y_m, in_pitch（ラインから外側2m以内なら1）, confidence |
+| `pitch_summary.csv` | ID別の出現フレーム数・走行距離・平均速度・1秒間の最高速度（IDが付け直されるため参考値） |
+| `topview.mp4` | 俯瞰図（H.264）。ピッチ外は灰色。`viewer.html`の「俯瞰動画」で元動画と同期表示できる |
+| `calib_overlay.png` / `calibration_check.json` | ピッチのラインの重ね描きと、キーポイントの検証誤差 |
+| `pitch_eval.json`（eval_pitch.py） | クリップの区間の特定結果と、正解との誤差 |
+
+`eval_pitch.py`は初回にgsrから必要な値だけを抜き出し、`data/gsr/.../*.extract.npz`へキャッシュする（約50秒、メモリ約0.5GB）。
 
 ## ソースと利用条件
 

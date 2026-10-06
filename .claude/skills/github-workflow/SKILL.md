@@ -7,7 +7,7 @@ description: sport-tracking-poc 固有版（global の github-workflow を上書
 
 このリポジトリは使い捨てPoC（一次情報はルート `CLAUDE.md`）。2026-10-06 のユーザー決定により、Issue 単位で PR を出し、レビュー OK なら main へマージするまで自走する。
 
-## Issue（作成済み・新規に増やさない）
+## Issue（ユーザーの依頼があったときだけ増やす）
 
 | Issue | 内容 | ブランチ例 |
 |---|---|---|
@@ -15,6 +15,7 @@ description: sport-tracking-poc 固有版（global の github-workflow を上書
 | #3 | CPU環境構築と `track.py` 実装 | `feat/3-track` |
 | #4 | 実動画での段階実行と `RESULT.md` | `docs/4-result` |
 | #5 | 結果ビューア `viewer.html`（#4 の後） | `feat/5-viewer` |
+| #11 | ピッチ座標（俯瞰xy）への変換と評価 | `feat/11-pitch` |
 
 ## 手順
 
@@ -32,5 +33,5 @@ description: sport-tracking-poc 固有版（global の github-workflow を上書
 ## やらないこと
 
 - main への直接 push、force push、履歴改変、既存ファイル削除。
-- Codex レビュー、worktree、新しい Issue の追加（将来用 Issue は作らない）。
+- Codex レビュー、worktree、ユーザーの依頼がない Issue の追加（将来用 Issue は作らない）。
 - 作業ログ: 別ファイルを作らない。結果と問題点は `RESULT.md` に書く。

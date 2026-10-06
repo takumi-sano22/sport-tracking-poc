@@ -60,6 +60,7 @@
     <div class="inputs">
       <label>動画（ブラウザで再生できる H.264 の MP4）<input type="file" id="video-file" accept="video/mp4"></label>
       <label>tracks.csv<input type="file" id="csv-file" accept=".csv,text/csv"></label>
+      <label>俯瞰動画（任意。pitch.py の topview.mp4）<input type="file" id="top-file" accept="video/mp4"></label>
       <label>fps<input type="number" id="fps" value="25" min="1" step="0.001"></label>
       <label>開始秒（track.py の --start）<input type="number" id="start" value="0" min="0" step="0.01"></label>
     </div>
@@ -69,6 +70,8 @@
 
   <section class="card">
     <video id="video" controls muted playsinline></video>
+    <video id="top" muted playsinline hidden style="max-width:720px;margin:12px auto 0"></video>
+    <p class="note" id="top-note" hidden>俯瞰図はピッチ座標（m）への推定変換で、上の動画に同期して再生します。灰色の点はピッチ外（ラインから2m超）。</p>
   </section>
 
   <section class="kpis" id="kpis"></section>
@@ -107,6 +110,22 @@
     return startFrame() + Math.max(0, Math.min(k, last));
   };
   const timeOf = (frame) => (frame - startFrame() + 0.5) / fps();
+
+  // 俯瞰動画は上の動画に従って再生・停止・シークする（同じ開始フレームから書き出している前提）
+  const topVideo = $("top");
+  $("top-file").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    topVideo.src = URL.createObjectURL(f);
+    topVideo.hidden = false; $("top-note").hidden = false;
+    topVideo.currentTime = video.currentTime || 0;
+  });
+  const syncTop = (t) => {
+    if (!topVideo.src) return;
+    if (Math.abs(topVideo.currentTime - t) > 1.5 / fps()) topVideo.currentTime = t;
+  };
+  video.addEventListener("play", () => { if (topVideo.src) topVideo.play(); });
+  video.addEventListener("pause", () => { if (topVideo.src) { topVideo.pause(); syncTop(video.currentTime); } });
 
   $("video-file").addEventListener("change", (e) => {
     const f = e.target.files[0];
@@ -201,12 +220,12 @@
 
   // 再生中はフレームごとに更新する（未対応ブラウザは timeupdate で代用）
   if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
-    const loop = (_, meta) => { renderNow(meta.mediaTime); video.requestVideoFrameCallback(loop); };
+    const loop = (_, meta) => { renderNow(meta.mediaTime); syncTop(meta.mediaTime); video.requestVideoFrameCallback(loop); };
     video.requestVideoFrameCallback(loop);
   } else {
-    video.addEventListener("timeupdate", () => renderNow());
+    video.addEventListener("timeupdate", () => { renderNow(); syncTop(video.currentTime); });
   }
-  video.addEventListener("seeked", () => renderNow());
+  video.addEventListener("seeked", () => { renderNow(); syncTop(video.currentTime); });
 </script>
 </body>
 </html>
