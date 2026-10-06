@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>追跡結果ビューア</title>
+<style>
+  /* 色は Tailwind 既定色の gray（基本トーン）と emerald（選択状態）だけを使う（ui-design-recipes 固有版） */
+  :root {
+    --gray-50: #f9fafb; --gray-200: #e5e7eb; --gray-400: #9ca3af; --gray-500: #6b7280;
+    --gray-700: #374151; --gray-900: #111827;
+    --emerald-50: #ecfdf5; --emerald-600: #059669; --emerald-700: #047857;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; background: var(--gray-50); color: var(--gray-900); font-size: 14px; }
+  header { position: sticky; top: 0; z-index: 40; background: #fff; border-bottom: 1px solid var(--gray-200); }
+  .wrap { max-width: 1152px; margin: 0 auto; padding: 0 24px; }
+  header .wrap { display: flex; align-items: baseline; gap: 16px; padding-top: 12px; padding-bottom: 12px; }
+  h1 { font-size: 16px; margin: 0; }
+  .note { color: var(--gray-500); font-size: 12px; }
+  main.wrap { padding-top: 24px; padding-bottom: 32px; display: grid; gap: 16px; }
+  .card { background: #fff; border: 1px solid var(--gray-200); border-radius: 16px; padding: 16px; }
+  .card h2 { font-size: 13px; margin: 0 0 12px; color: var(--gray-700); }
+  .inputs { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--gray-500); }
+  input[type=number] { width: 90px; padding: 4px 6px; border: 1px solid var(--gray-200); border-radius: 8px; }
+  video { width: 100%; background: #000; border-radius: 8px; display: block; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi { border: 1px solid var(--gray-200); border-radius: 16px; padding: 12px 16px; background: #fff; }
+  .kpi .v { font-size: 22px; font-weight: 700; }
+  .kpi .k { font-size: 12px; color: var(--gray-500); }
+  .cols { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; }
+  .now .frame { font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--gray-200); border-radius: 999px; padding: 2px 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chip.sel { background: var(--emerald-50); border-color: var(--emerald-600); color: var(--emerald-700); }
+  .tbl { max-height: 420px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--gray-50); color: var(--gray-500); font-weight: 600; font-size: 12px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--gray-50); }
+  tbody tr.sel { background: var(--emerald-50); color: var(--emerald-700); }
+  .empty { color: var(--gray-400); padding: 24px; text-align: center; }
+  .err { color: #b91c1c; font-size: 12px; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>追跡結果ビューア</h1>
+    <span class="note">IDは追跡器が付けた仮IDで、同じ人物であることは保証しません。座標は画面上のピクセルです。</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <h2>読み込み</h2>
+    <div class="inputs">
+      <label>動画（ブラウザで再生できる H.264 の MP4）<input type="file" id="video-file" accept="video/mp4"></label>
+      <label>tracks.csv<input type="file" id="csv-file" accept=".csv,text/csv"></label>
+      <label>fps<input type="number" id="fps" value="25" min="1" step="0.001"></label>
+      <label>開始秒（track.py の --start）<input type="number" id="start" value="0" min="0" step="0.01"></label>
+    </div>
+    <p class="err" id="error"></p>
+  </section>
+
+  <section class="card">
+    <video id="video" controls muted playsinline></video>
+  </section>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="cols">
+    <section class="card now">
+      <h2>表示中のフレーム</h2>
+      <div class="frame" id="now-frame">—</div>
+      <div class="chips" id="now-ids"></div>
+    </section>
+    <section class="card">
+      <h2>ID一覧（行をクリックすると、そのIDが最初に現れたフレームへ移動）</h2>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>仮ID</th><th>出現フレーム数</th><th>最初のフレーム</th><th>最後のフレーム</th><th>区間（秒）</th><th>平均検出スコア</th></tr></thead>
+          <tbody id="id-rows"><tr><td colspan="6" class="empty">tracks.csv を選ぶと表示します</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const video = $("video");
+  let byFrame = new Map();   // frame_index -> [track_id, ...]
+  let selectedId = null;
+
+  // 元クリップのフレーム番号と動画の再生位置の換算（track.py は開始フレームから連続して書き出す）
+  const fps = () => Number($("fps").value) || 25;
+  const startFrame = () => Math.round((Number($("start").value) || 0) * fps());
+  const frameAt = (t) => startFrame() + Math.floor(t * fps() + 1e-3);
+  const timeOf = (frame) => (frame - startFrame() + 0.5) / fps();
+
+  $("video-file").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (f) video.src = URL.createObjectURL(f);
+  });
+  video.addEventListener("error", () => {
+    $("error").textContent = "動画を再生できません。OpenCV の mp4v 出力はブラウザで再生できないことがあるため、README の手順で H.264 に変換したファイルを選んでください。";
+  });
+
+  $("csv-file").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try { loadCsv(await f.text()); $("error").textContent = ""; }
+    catch (err) { $("error").textContent = "CSV を読めません: " + err.message; }
+  });
+
+  function loadCsv(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const header = lines[0].split(",");
+    const need = ["frame_index", "track_id", "confidence"];
+    const idx = Object.fromEntries(header.map((h, i) => [h, i]));
+    if (!need.every((h) => h in idx)) throw new Error("列が tracks.csv の形式と違います");
+
+    // ID別・フレーム別に集計する（CSV は1行＝1フレーム中の1つのID）
+    byFrame = new Map();
+    const ids = new Map();
+    for (const line of lines.slice(1)) {
+      const c = line.split(",");
+      const frame = Number(c[idx.frame_index]), id = Number(c[idx.track_id]), conf = Number(c[idx.confidence]);
+      if (!byFrame.has(frame)) byFrame.set(frame, []);
+      byFrame.get(frame).push(id);
+      const s = ids.get(id) || { id, n: 0, first: frame, last: frame, conf: 0 };
+      s.n += 1; s.first = Math.min(s.first, frame); s.last = Math.max(s.last, frame); s.conf += conf;
+      ids.set(id, s);
+    }
+    const list = [...ids.values()].sort((a, b) => b.n - a.n || a.id - b.id);
+    renderKpis(lines.length - 1, list);
+    renderTable(list);
+    renderNow();
+  }
+
+  function renderKpis(rows, list) {
+    const counts = list.map((s) => s.n).sort((a, b) => a - b);
+    const median = counts.length ? counts[Math.floor(counts.length / 2)] : 0;
+    const perFrame = [...byFrame.values()].map((v) => v.length);
+    const items = [
+      ["CSV行数", rows],
+      ["ID付きのフレーム数", byFrame.size],
+      ["仮IDの数", list.length],
+      ["1秒以上続いたID", counts.filter((n) => n >= fps()).length],
+      ["ID別フレーム数の中央値", median],
+      ["1フレームあたりのID数", perFrame.length ? `${Math.min(...perFrame)}〜${Math.max(...perFrame)}` : "—"],
+    ];
+    $("kpis").innerHTML = items.map(([k, v]) => `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join("");
+  }
+
+  function renderTable(list) {
+    if (!list.length) {
+      $("id-rows").innerHTML = `<tr><td colspan="6" class="empty">ID付きの行がありません（ヘッダーのみ）</td></tr>`;
+      return;
+    }
+    $("id-rows").innerHTML = list.map((s) =>
+      `<tr data-id="${s.id}" data-first="${s.first}"><td>#${s.id}</td><td>${s.n}</td><td>${s.first}</td><td>${s.last}</td>` +
+      `<td>${(s.first / fps()).toFixed(2)}〜${(s.last / fps()).toFixed(2)}</td><td>${(s.conf / s.n).toFixed(2)}</td></tr>`).join("");
+  }
+
+  $("id-rows").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-id]");
+    if (!tr) return;
+    selectedId = Number(tr.dataset.id);
+    document.querySelectorAll("#id-rows tr.sel").forEach((r) => r.classList.remove("sel"));
+    tr.classList.add("sel");
+    if (video.src) { video.pause(); video.currentTime = timeOf(Number(tr.dataset.first)); }
+    renderNow();
+  });
+
+  function renderNow() {
+    const frame = frameAt(video.currentTime || 0);
+    const ids = (byFrame.get(frame) || []).slice().sort((a, b) => a - b);
+    $("now-frame").textContent = `元クリップのフレーム ${frame}（${(frame / fps()).toFixed(2)}秒）／ID付き ${ids.length}件`;
+    $("now-ids").innerHTML = ids.map((id) => `<span class="chip${id === selectedId ? " sel" : ""}">#${id}</span>`).join("");
+  }
+
+  // 再生中はフレームごとに更新する（未対応ブラウザは timeupdate で代用）
+  if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
+    const loop = () => { renderNow(); video.requestVideoFrameCallback(loop); };
+    video.requestVideoFrameCallback(loop);
+  } else {
+    video.addEventListener("timeupdate", renderNow);
+  }
+  video.addEventListener("seeked", renderNow);
+</script>
+</body>
+</html>

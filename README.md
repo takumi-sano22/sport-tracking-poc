@@ -123,6 +123,23 @@ python track.py --input data/mot/clips/118577.mp4 \
 音声は不要。動画再生にWSLのGUIは必須にせず、保存したMP4をWindows側で開けばよい。
 `RESULT.md`には再実行コマンド、実行時間、観察した問題を短く残す。
 
+## 7. 結果ビューア（viewer.html）
+
+`track.py`の出力はOpenCVの`mp4v`形式で、ブラウザでは再生できないことがある。
+`.venv`の`imageio-ffmpeg`（0.6.0、同梱FFmpeg 7.0.2）でH.264へ変換する。sudoやシステムのFFmpegは使わない。
+
+```bash
+source .venv/bin/activate
+python -m pip install imageio-ffmpeg==0.6.0  # requirements.txt に含まれる
+FF=$(python -c "import imageio_ffmpeg as i; print(i.get_ffmpeg_exe())")
+"$FF" -loglevel error -i outputs/demo/annotated.mp4 -c:v libx264 -pix_fmt yuv420p \
+  -crf 23 -preset veryfast -movflags +faststart -an outputs/demo/annotated_h264.mp4
+```
+
+`viewer.html`をブラウザで直接開き（サーバー不要）、`annotated_h264.mp4`と`tracks.csv`をファイル選択で読み込む。
+表示するもの：動画、集計（CSV行数・仮ID数など）、表示中のフレームのID、ID一覧（行をクリックすると、そのIDの最初のフレームへ移動）。
+`--start`を0以外で実行した場合は、画面の「開始秒」を合わせる。変換は画質を落とす再エンコードで、内容（枠・ID）は変えない。
+
 ## ソースと利用条件
 
 確認日：2026-10-06。下記は配布元・公式資料で確認した範囲であり、実行検証済みという意味ではない。
