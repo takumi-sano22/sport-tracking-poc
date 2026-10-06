@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_gsr(path: Path) -> dict:
     """gsr の JSON から (frame, track_id, role, x, y) を抜き出す。2回目以降は .npz キャッシュを使う。"""
-    cache = path.with_suffix(".extract.npz")
+    cache = path.with_suffix(".extract.npz")  # gsr を差し替えたら、このキャッシュを消すこと
     if cache.exists():
         z = np.load(cache)
         return {k: z[k] for k in z.files}
@@ -74,13 +74,18 @@ def load_mot(path: Path) -> dict[int, np.ndarray]:
     return {k: np.array(v) for k, v in by_frame.items()}
 
 
-def matched_distances(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
-    """ハンガリアン法で1対1に対応づけ、対応した組の距離を返す。"""
+def matched_distances(pred: np.ndarray, gt: np.ndarray, radius: float | None = None) -> np.ndarray:
+    """ハンガリアン法で1対1に対応づけ、対応した組の距離を返す。
+
+    radius を指定すると、それを超える組は対応させない（遠い組との対応で近い組が崩れるのを防ぐ）。
+    """
     if len(pred) == 0 or len(gt) == 0:
         return np.empty(0)
     cost = np.linalg.norm(pred[:, None, :] - gt[None, :, :], axis=2)
-    r, c = linear_sum_assignment(cost)
-    return cost[r, c]
+    work = cost if radius is None else np.where(cost > radius, 1e6, cost)
+    r, c = linear_sum_assignment(work)
+    d = cost[r, c]
+    return d if radius is None else d[d <= radius]
 
 
 def stats(e: np.ndarray) -> dict:
@@ -116,7 +121,8 @@ def main() -> None:
     clip_frames = sorted(mot_pitch)
     samples = [clip_frames[int(i)] for i in np.linspace(0, len(clip_frames) - 1, ALIGN_SAMPLE_FRAMES)]
 
-    # クリップのフレーム k が gsr のフレーム k+offset に当たるとして、全オフセットで一致度を測る
+    # クリップのフレーム k が gsr のフレーム k+offset に当たるとして、全オフセットで一致度を測る。
+    # 照合には TPS 補正後の座標を使う（配布元のみとの比較が TPS 側にわずかに有利になりうる点は結果に開示する）
     gsr_frames = np.array(sorted(gt_by_frame))
     best = []
     for offset in range(int(gsr_frames.min()) - samples[0], int(gsr_frames.max()) - samples[-1] + 1):
@@ -141,10 +147,28 @@ def main() -> None:
              for k in frames if (k + offset) in gt_by_frame]
         return stats(np.concatenate(d))
     first, second = [k for k in clip_frames if k < mid], [k for k in clip_frames if k >= mid]
+
+    def signed_bias(use_tps):
+        """予測 − 正解 の平均（m）。系統的なずれの向きを見る。"""
+        diffs = []
+        for k in clip_frames[::25]:
+            if (k + offset) not in gt_by_frame:
+                continue
+            pred = mot_pitch[k] if use_tps else mapper._base(mot[k]) - half
+            gt = gt_by_frame[k + offset]
+            r, c = linear_sum_assignment(np.linalg.norm(pred[:, None, :] - gt[None, :, :], axis=2))
+            diffs.append(pred[r] - gt[c])
+        return [round(float(v), 2) for v in np.concatenate(diffs).mean(axis=0)]
+
+    # 選んだオフセットの前後での一致度（明確な極小になっているかを確かめる）
+    by_offset = {o: s for s, o in best}
+    profile = {str(d): round(by_offset[offset + d], 2) for d in (-25, -10, -5, 0, 5, 10, 25) if offset + d in by_offset}
     result = {"gsr_file": Path(args.gsr).name, "clip_to_gsr_frame_offset": offset,
               "clip_start_in_half_sec": round((offset - 1) / 25.0, 2),  # クリップのフレーム0 = gsr のフレーム offset（1始まり）
               "align_median_m": round(score, 2),
               "align_runner_up_median_m": runner_up,
+              "align_profile_median_m": profile,
+              "signed_mean_error_m_dx_dy": {"official_plus_tps": signed_bias(True), "official_only": signed_bias(False)},
               "conversion_error_m": {
                   "official_plus_tps": {"clip_first_half": conv_error(first, True), "clip_second_half": conv_error(second, True)},
                   "official_only": {"clip_first_half": conv_error(first, False), "clip_second_half": conv_error(second, False)}}}
@@ -157,20 +181,23 @@ def main() -> None:
                 if r["in_pitch"] == "1":
                     pred_by_frame[int(r["frame_index"])].append((float(r["x_m"]), float(r["y_m"])))
         dists, n_gt, n_pred, n_hit = [], 0, 0, 0
-        for k, pts in pred_by_frame.items():
+        # 予測のないフレームも正解の人数は数える（見落としとして扱う）
+        frames = range(min(pred_by_frame), max(pred_by_frame) + 1)
+        for k in frames:
             gt = gt_by_frame.get(k + offset)
             if gt is None:
                 continue
-            d = matched_distances(np.array(pts), gt)
+            pts = np.array(pred_by_frame.get(k, []), dtype=float).reshape(-1, 2)
+            d = matched_distances(pts, gt, MATCH_RADIUS)
             n_gt += len(gt)
             n_pred += len(pts)
-            n_hit += int((d <= MATCH_RADIUS).sum())
-            dists.append(d[d <= MATCH_RADIUS])
+            n_hit += len(d)
+            dists.append(d)
         result["end_to_end"] = {
-            "frames": len(pred_by_frame), "match_radius_m": MATCH_RADIUS,
+            "frames": len(frames), "match_radius_m": MATCH_RADIUS,
             "recall": round(n_hit / n_gt, 3) if n_gt else None,  # 正解22人のうち2m以内に予測がある割合
             "precision": round(n_hit / n_pred, 3) if n_pred else None,  # 予測（ピッチ内）のうち正解と対応した割合
-            "matched_error_m": stats(np.concatenate(dists)) if dists else {"n": 0},
+            "matched_error_m_within_radius": stats(np.concatenate(dists)) if dists else {"n": 0},
             "note": "予測には審判・誤検出を含むため、適合率は低めに出る。gsrの座標は1.05m×0.68m刻み。"}
 
     out.mkdir(parents=True, exist_ok=True)

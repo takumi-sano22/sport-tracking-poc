@@ -213,16 +213,17 @@ def summarize(rows: list[dict], fps: float) -> list[dict]:
         frames = np.array([r["frame_index"] for r in rs])
         xy = np.array([[r["x_m"], r["y_m"]] for r in rs])
         # フレームが連続する区間ごとに移動平均をかけ、区間内の移動距離だけを足す
-        distance, max_speed = 0.0, 0.0
+        distance, max_speed, moving_frames = 0.0, 0.0, 0
         breaks = np.where(np.diff(frames) != 1)[0] + 1
         for seg_f, seg_xy in zip(np.split(frames, breaks), np.split(xy, breaks)):
             k = min(SMOOTH_FRAMES, len(seg_xy))
             kernel = np.ones(k) / k
             sm = np.c_[np.convolve(seg_xy[:, 0], kernel, "valid"), np.convolve(seg_xy[:, 1], kernel, "valid")]
             distance += float(np.linalg.norm(np.diff(sm, axis=0), axis=1).sum())
+            moving_frames += len(sm) - 1  # 距離を測ったフレーム間隔の数（平均速度の分母をそろえる）
             if len(sm) > one_sec:  # 1秒間の変位から最高速度を出す（フレーム間の揺れの影響を抑える）
                 max_speed = max(max_speed, float(np.linalg.norm(sm[one_sec:] - sm[:-one_sec], axis=1).max()))
-        duration = len(rs) / fps
+        duration = moving_frames / fps
         out.append({
             "track_id": tid, "frames": len(rs), "first_frame": int(frames[0]), "last_frame": int(frames[-1]),
             "in_pitch_ratio": round(float(np.mean([r["in_pitch"] for r in rs])), 2),
@@ -254,7 +255,9 @@ def main() -> None:
     if not src:
         fail("tracks.csv にID付きの行がありません")
     # fps は CSV の frame_index / timestamp_sec から求める（track.py は CFR 前提で時刻を書いている）
-    sample = next(r for r in src if float(r["timestamp_sec"]) > 0)
+    sample = src[-1]  # 最も大きい frame_index で割り、timestamp の丸め誤差を小さくする
+    if float(sample["timestamp_sec"]) <= 0:
+        fail("tracks.csv から fps を求められません")
     fps = round(int(sample["frame_index"]) / float(sample["timestamp_sec"]), 3)
     # 俯瞰動画は track.py の出力と同じ開始フレームから書く（出力先を作る前に検証する）
     first = int(round(args.start * fps))

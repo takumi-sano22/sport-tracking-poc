@@ -124,7 +124,8 @@
     if (!topVideo.src) return;
     if (Math.abs(topVideo.currentTime - t) > 1.5 / fps()) topVideo.currentTime = t;
   };
-  video.addEventListener("play", () => { if (topVideo.src) topVideo.play(); });
+  video.addEventListener("play", () => { if (topVideo.src) topVideo.play().catch(() => {}); });
+  video.addEventListener("ratechange", () => { topVideo.playbackRate = video.playbackRate; });
   video.addEventListener("pause", () => { if (topVideo.src) { topVideo.pause(); syncTop(video.currentTime); } });
 
   $("video-file").addEventListener("change", (e) => {
