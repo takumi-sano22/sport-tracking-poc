@@ -63,7 +63,8 @@
       <label>fps<input type="number" id="fps" value="25" min="1" step="0.001"></label>
       <label>開始秒（track.py の --start）<input type="number" id="start" value="0" min="0" step="0.01"></label>
     </div>
-    <p class="err" id="error"></p>
+    <p class="err" id="video-error"></p>
+    <p class="err" id="csv-error"></p>
   </section>
 
   <section class="card">
@@ -95,11 +96,16 @@
   const video = $("video");
   let byFrame = new Map();   // frame_index -> [track_id, ...]
   let selectedId = null;
+  let lastList = null;     // 直近に読み込んだ CSV の集計
 
   // 元クリップのフレーム番号と動画の再生位置の換算（track.py は開始フレームから連続して書き出す）
   const fps = () => Number($("fps").value) || 25;
   const startFrame = () => Math.round((Number($("start").value) || 0) * fps());
-  const frameAt = (t) => startFrame() + Math.floor(t * fps() + 1e-3);
+  const frameAt = (t) => {
+    const k = Math.floor(t * fps() + 1e-3);
+    const last = video.duration ? Math.round(video.duration * fps()) - 1 : k;
+    return startFrame() + Math.max(0, Math.min(k, last));
+  };
   const timeOf = (frame) => (frame - startFrame() + 0.5) / fps();
 
   $("video-file").addEventListener("change", (e) => {
@@ -107,14 +113,14 @@
     if (f) video.src = URL.createObjectURL(f);
   });
   video.addEventListener("error", () => {
-    $("error").textContent = "動画を再生できません。OpenCV の mp4v 出力はブラウザで再生できないことがあるため、README の手順で H.264 に変換したファイルを選んでください。";
+    $("video-error").textContent = "動画を再生できません。OpenCV の mp4v 出力はブラウザで再生できないことがあるため、README の手順で H.264 に変換したファイルを選んでください。";
   });
 
   $("csv-file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    try { loadCsv(await f.text()); $("error").textContent = ""; }
-    catch (err) { $("error").textContent = "CSV を読めません: " + err.message; }
+    try { loadCsv(await f.text()); $("csv-error").textContent = ""; }
+    catch (err) { $("csv-error").textContent = "CSV を読めません: " + err.message; }
   });
 
   function loadCsv(text) {
@@ -127,9 +133,11 @@
     // ID別・フレーム別に集計する（CSV は1行＝1フレーム中の1つのID）
     byFrame = new Map();
     const ids = new Map();
+    lastList = null;
     for (const line of lines.slice(1)) {
       const c = line.split(",");
       const frame = Number(c[idx.frame_index]), id = Number(c[idx.track_id]), conf = Number(c[idx.confidence]);
+      if (![frame, id, conf].every(Number.isFinite)) throw new Error(`数値でない行があります: ${line.slice(0, 40)}`);
       if (!byFrame.has(frame)) byFrame.set(frame, []);
       byFrame.get(frame).push(id);
       const s = ids.get(id) || { id, n: 0, first: frame, last: frame, conf: 0 };
@@ -137,10 +145,17 @@
       ids.set(id, s);
     }
     const list = [...ids.values()].sort((a, b) => b.n - a.n || a.id - b.id);
-    renderKpis(lines.length - 1, list);
-    renderTable(list);
+    lastList = { rows: lines.length - 1, list };
+    renderAll();
+  }
+
+  // fps・開始秒を変えたら、換算に依存する表示をすべて描き直す
+  function renderAll() {
+    if (lastList) { renderKpis(lastList.rows, lastList.list); renderTable(lastList.list); }
     renderNow();
   }
+  $("fps").addEventListener("change", renderAll);
+  $("start").addEventListener("change", renderAll);
 
   function renderKpis(rows, list) {
     const counts = list.map((s) => s.n).sort((a, b) => a - b);
@@ -150,9 +165,9 @@
       ["CSV行数", rows],
       ["ID付きのフレーム数", byFrame.size],
       ["仮IDの数", list.length],
-      ["1秒以上続いたID", counts.filter((n) => n >= fps()).length],
+      ["出現が1秒分（fpsフレーム）以上のID", counts.filter((n) => n >= fps()).length],
       ["ID別フレーム数の中央値", median],
-      ["1フレームあたりのID数", perFrame.length ? `${Math.min(...perFrame)}〜${Math.max(...perFrame)}` : "—"],
+      ["ID付きフレームでの1フレームあたりのID数", perFrame.length ? `${Math.min(...perFrame)}〜${Math.max(...perFrame)}` : "—"],
     ];
     $("kpis").innerHTML = items.map(([k, v]) => `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join("");
   }
@@ -177,8 +192,8 @@
     renderNow();
   });
 
-  function renderNow() {
-    const frame = frameAt(video.currentTime || 0);
+  function renderNow(mediaTime) {
+    const frame = frameAt(mediaTime ?? video.currentTime ?? 0);
     const ids = (byFrame.get(frame) || []).slice().sort((a, b) => a - b);
     $("now-frame").textContent = `元クリップのフレーム ${frame}（${(frame / fps()).toFixed(2)}秒）／ID付き ${ids.length}件`;
     $("now-ids").innerHTML = ids.map((id) => `<span class="chip${id === selectedId ? " sel" : ""}">#${id}</span>`).join("");
@@ -186,12 +201,12 @@
 
   // 再生中はフレームごとに更新する（未対応ブラウザは timeupdate で代用）
   if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
-    const loop = () => { renderNow(); video.requestVideoFrameCallback(loop); };
+    const loop = (_, meta) => { renderNow(meta.mediaTime); video.requestVideoFrameCallback(loop); };
     video.requestVideoFrameCallback(loop);
   } else {
-    video.addEventListener("timeupdate", renderNow);
+    video.addEventListener("timeupdate", () => renderNow());
   }
-  video.addEventListener("seeked", renderNow);
+  video.addEventListener("seeked", () => renderNow());
 </script>
 </body>
 </html>
