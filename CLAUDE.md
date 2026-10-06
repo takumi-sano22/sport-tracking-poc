@@ -16,6 +16,7 @@ global（`~/.claude/`）の重い開発フローはこのPoCには使わない�
 
 - Git: `github-workflow`（固有版）。Issue・PR・worktree・2段レビューなしでローカルコミットまで。
 - 動作確認: `test-and-review`（固有版）。段階実行→出力確認→`RESULT.md`。
+- UI: 作る場合は`ui-design-recipes`（固有版）。結果を眺める簡易UIに留める。
 - 作業ログは別に作らず`RESULT.md`に集約する。TaskCreateによるチェックリストは任意。
 
 ## 作業範囲
