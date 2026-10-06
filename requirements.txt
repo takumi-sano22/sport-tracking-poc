@@ -22,6 +22,7 @@ httpx==0.28.1
 httpx2==2.13.1
 huggingface_hub==1.33.0
 idna==3.20
+ijson==3.5.1
 imageio-ffmpeg==0.6.0
 Jinja2==3.1.6
 kiwisolver==1.5.1
