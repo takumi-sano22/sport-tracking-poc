@@ -4,8 +4,7 @@
 
 本格版は別リポジトリで作る。このリポジトリでは、拡張性や精度向上を追わず、最小構成の動きと限界を一度見る。
 
-> 現在はClaude Codeへの引き継ぎ用ドキュメントのみ。実装・動画の取得・実動画での動作確認はまだ行っていない。
-> 以下の`track.py`のコマンドは、これから実装するインターフェース。
+> `track.py`は実装済み（#3）。実動画での実行結果は`RESULT.md`に記録する。
 
 ## 決定済み
 
@@ -82,7 +81,31 @@ hf download atomscott/soccertrack-v2 mot/clips/118577.mp4 \
 権限エラー時は本人の同意・ログイン状態を確認し、別のミラーで回避しない。
 ファイルの配布構成が変わった場合は公式一覧を再確認し、MOTクリップ1本だけを選び直して記録する。
 
-## 5. 実装後の実行例
+## 5. CPU環境の構築
+
+Python 3.12の`.venv`で、2026-10-06に次の版で動作を確認した（全体は`requirements.txt`）。
+
+| パッケージ | 版 |
+|---|---|
+| torch / torchvision | 2.14.1+cpu / 0.29.1+cpu |
+| rfdetr | 1.11.2（重み `rf-detr-small.pth`、COCO学習済み） |
+| trackers | 2.6.1（`ByteTrackTracker`） |
+| supervision | 0.30.7 |
+| opencv-python | 5.0.0.93 |
+
+```bash
+python3 -m venv .venv  # 未作成の場合だけ
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -c "import torch; print(torch.cuda.is_available())"  # False であること
+```
+
+- `+cpu`版のtorch / torchvisionはPyPIに無く、`requirements.txt`先頭の`--extra-index-url https://download.pytorch.org/whl/cpu`から取得する。
+- OpenCVは`trackers`が`opencv-python`（GUI版）を必須にしているため、headless版を入れず GUI版1つにしている（GUI機能は使わない）。
+- 重みは初回実行時に`rfdetr`が`~/.roboflow/models/rf-detr-small.pth`（約368 MB）へ自動取得する。リポジトリには入れない。
+- `transformers`の依存解決で`huggingface_hub`は1.33.0になる（HF認証はそのまま使えることを`preflight.sh`で確認済み）。
+
+## 6. 実装後の実行例
 
 ```bash
 source .venv/bin/activate
