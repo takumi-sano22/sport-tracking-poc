@@ -1,0 +1,47 @@
+# Local environments / tools
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.cache/
+.claude/settings.local.json
+
+# Credentials
+.env
+.env.*
+*.pem
+*.key
+credentials*.json
+secrets*.json
+
+# Dataset, downloaded models, and generated output
+/data/
+/outputs/
+/models/
+/weights/
+/runs/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.pt
+*.pth
+*.pth.tar
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+*.csv
+*.log
+*.zip
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
