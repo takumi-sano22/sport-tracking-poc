@@ -31,7 +31,8 @@
       "Bash(mv *)",
       "Bash(rm *)",
       "Bash(nproc)",
-      "Bash(free *)"
+      "Bash(free *)",
+      "Bash(./preflight.sh)"
     ],
     "deny": [
       "Bash(git push *--force*)",

@@ -14,17 +14,18 @@
 
 global（`~/.claude/`）の重い開発フローはこのPoCには使わない。`.claude/skills/` の固有版を優先する。
 
-- Git: `github-workflow`（固有版）。Issue・PR・worktree・2段レビューなしでローカルコミットまで。
+- Git: `github-workflow`（固有版）。段階別Issue（#2〜#5）ごとにブランチ→PR→レビュー→OKならmainへマージ。worktreeは使わない。
 - 動作確認: `test-and-review`（固有版）。段階実行→出力確認→`RESULT.md`。
 - UI: 作る場合は`ui-design-recipes`（固有版）。結果を眺める簡易UIに留める。
 - 作業ログは別に作らず`RESULT.md`に集約する。TaskCreateによるチェックリストは任意。
-- 権限: `.claude/settings.json`。日常操作は広く許可し、不可逆な操作（force push・`reset --hard`・リポジトリ削除・`sudo`等）とHFトークンの読み出しだけ拒否している。許可されていてもpush/PRは上記のとおり指示がある場合だけ。
+- 権限: `.claude/settings.json`。日常操作は広く許可し、不可逆な操作（force push・`reset --hard`・リポジトリ削除・`sudo`等）とHFトークンの読み出しだけ拒否している。push/PR/マージは下記「安全と終了」の範囲で行う。
 
 ## 作業範囲
 
 - WSL・CPU限定。`.venv`内で、RF-DETR Small＋ByteTrackの1通りを実装する。
-- 基本は`track.py` 1本、`requirements.txt`、実行後の`RESULT.md`だけを追加する。
-- 任意で、出力（MP4・CSV）を眺める結果ビューアを静的HTML 1画面で追加してよい。追跡処理が動いた後に着手する。
+- 追加するのは`track.py` 1本、`requirements.txt`、実行後の`RESULT.md`、下記の`preflight.sh`と`viewer.html`だけ。
+- 前提ゲート`preflight.sh`を置く。自走開始前と素材取得後に実行する。HF認証・素材のFAILで止めるのは#4（実動画での実行）以降だけで、#3の実装・小テストは進めてよい。
+- 出力（MP4・CSV）を眺める結果ビューア`viewer.html`を静的HTML 1画面で作る（2026-10-06決定）。追跡処理が動いた後に着手する。ブラウザ再生用のH.264変換は`.venv`の`imageio-ffmpeg`で行い、sudoは使わない。
 - 動画→人物検出→追跡→ID・軌跡付きMP4とCSV。モデルは既存重みで推論するだけ。
 - API・依存関係の細部は公式資料と実行環境を調べて自分で決める。通常の実装判断でユーザーを止めない。
 - 動作したパッケージのバージョンを固定する。最新版を使うこと自体を目的にしない。
@@ -45,7 +46,7 @@ Hugging Faceの利用条件への同意と認証、必要な場合のsudo、追�
 素材・モデル重み・生成動画・認証情報はGitへ入れない。公式配布以外の重みや素材で制限を回避しない。
 外部推論サービスへ映像を送らない。ローカルCPU推論以外に切り替えない。
 専用リポジトリ内で編集し、既存ファイルを確認してから変更する。force pushや既存リポジトリの削除をしない。
-コード・文書のローカルコミットまで行ってよい。push / PR作成はユーザーから指示があった場合だけ行う。
+コード・文書のコミット、ブランチのpush、PR作成、レビュー後のmainへのマージまで自走してよい（2026-10-06決定。`START_CLAUDE.txt`の「push・PR不要」より優先）。mainへの直接pushはしない。
 
 短い実動画で出力でき、目視確認用の成果物と`RESULT.md`を残したら終了する。
 ID入れ替わり・見落としを理由に改善ループを始めない。
