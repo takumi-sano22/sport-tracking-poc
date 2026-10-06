@@ -58,7 +58,7 @@ tracked=$(git ls-files | grep -Ei '\.(mp4|csv|pth|pt|safetensors|onnx)$|(^|/)\.e
 avail=$(df -Pk . | awk 'NR==2 {print int($4 / 1048576)}')
 [ "$avail" -ge 10 ] && pass "ディスク空き ${avail}GB" || ng "ディスク空き ${avail}GB（10GB 以上を想定）"
 for url in https://download.pytorch.org/whl/cpu/ https://pypi.org/simple/ https://huggingface.co/; do
-  if [ -x "$PY" ] && "$PY" -c "import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=15)" "$url" >/dev/null 2>&1; then
+  if python3 -c "import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=15)" "$url" >/dev/null 2>&1; then
     pass "到達可: $url"
   else
     ng "到達不可: $url"

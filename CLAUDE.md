@@ -23,8 +23,8 @@ global（`~/.claude/`）の重い開発フローはこのPoCには使わない�
 ## 作業範囲
 
 - WSL・CPU限定。`.venv`内で、RF-DETR Small＋ByteTrackの1通りを実装する。
-- 基本は`track.py` 1本、`requirements.txt`、実行後の`RESULT.md`だけを追加する。
-- 前提ゲート`preflight.sh`を置く。自走開始前と素材取得後に実行し、`GATE: PASS`を確認する。
+- 追加するのは`track.py` 1本、`requirements.txt`、実行後の`RESULT.md`、下記の`preflight.sh`と`viewer.html`だけ。
+- 前提ゲート`preflight.sh`を置く。自走開始前と素材取得後に実行する。HF認証・素材のFAILで止めるのは#4（実動画での実行）以降だけで、#3の実装・小テストは進めてよい。
 - 出力（MP4・CSV）を眺める結果ビューア`viewer.html`を静的HTML 1画面で作る（2026-10-06決定）。追跡処理が動いた後に着手する。ブラウザ再生用のH.264変換は`.venv`の`imageio-ffmpeg`で行い、sudoは使わない。
 - 動画→人物検出→追跡→ID・軌跡付きMP4とCSV。モデルは既存重みで推論するだけ。
 - API・依存関係の細部は公式資料と実行環境を調べて自分で決める。通常の実装判断でユーザーを止めない。

@@ -24,7 +24,7 @@ description: sport-tracking-poc 固有版（global の github-workflow を上書
 4. ブランチを push し、`gh pr create` で PR を作る。本文に `Closes #N`、変更点、実行した確認の実出力を書く。
 5. レビュー（2段）:
    - 自己レビュー: `git diff main...HEAD` を一読する。
-   - `reviewer` agent: 差分をパッチファイルに保存して渡し、findings を P0〜P3 で返させる。
+   - `reviewer` agent: `git diff main...HEAD > <scratchpad>/prN.patch` を保存し、必須入力として「パッチ絶対パス／ルート絶対パス（このリポジトリ）／差分クラス（例: Python CLI、静的HTML、ドキュメント）／台帳: なし（この環境に code-review/references は存在しない。code-review skill の観点のみ）」を渡す。欠けると fail-closed で戻ってくる。findings は P0〜P3 で返させる。
 6. **OK の基準**: P0/P1 の指摘がゼロ。指摘があれば修正して再レビューする。2巡しても解消しなければマージせずユーザーに確認する。
 7. OK なら `gh pr merge <番号> --merge --delete-branch` で main へマージし、`git switch main && git pull` で手元を更新する。
 8. 完了報告では PR URL・マージコミットのハッシュ（実出力）を引用する。
