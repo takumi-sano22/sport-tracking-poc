@@ -20,7 +20,7 @@
 | 結果 | ID・軌跡付きMP4、画面座標のCSV、短い`RESULT.md` |
 | 任意 | 出力（MP4・CSV）を眺める結果ビューア。静的HTML 1画面のみ |
 | ピッチ座標 | #11で追加。配布元のキャリブレーションで足元を俯瞰xy（m）へ変換し、正解と比較（§8） |
-| 対象外 | 学習、Re-ID、背番号・氏名、ボール、チーム分類、複数カメラ、サーバー/API/DB、Docker、CI/CD、クラウド、ベンチマーク |
+| 対象外 | 学習、Re-ID、背番号・氏名、ボール、チーム分類、複数カメラ、サーバー/API/DB、Docker、CI/CD、クラウド、ベンチマーク（#15の検出器比較を除く） |
 | Claude Code設定 | `CLAUDE.md`と`.claude/`（PoC用に縮小したskill・権限設定）。詳細は`CLAUDE.md` |
 
 「IDが付いた」と「正しく同じ人物を追えた」は別。IDの入れ替わり・見落としも結果として記録する。
@@ -182,6 +182,39 @@ python eval_pitch.py --gsr data/gsr/118577/118577_1st.json --mot data/mot/118577
 
 `eval_pitch.py`は初回にgsrから必要な値だけを抜き出し、`data/gsr/.../*.extract.npz`へキャッシュする。初回の実行は全体で約50秒、2回目以降は約34秒。メモリは約0.5GB。gsrを差し替えたら、キャッシュを消してから実行する。
 
+## 9. 検出器の比較（#15）
+
+`track.py --detector` で検出器だけを差し替える（追跡・しきい値・区間は共通）。既定は `rfdetr`。
+
+| 名前 | 内容 | ライセンス |
+|---|---|---|
+| `rfdetr` | RF-DETR Small（既定） | Apache-2.0 |
+| `yolox` | YOLOX-S（Megvii 公式 ONNX）を onnxruntime で実行 | YOLOX：Apache-2.0、onnxruntime：MIT |
+| `rtdetrv2` | RT-DETRv2-S `PekingU/rtdetr_v2_r18vd`（transformers） | Apache-2.0 |
+| `dfine` | D-FINE-S `ustc-community/dfine-small-coco`（transformers） | Apache-2.0 |
+| `yolox-sahi` / `rfdetr-sahi` | 上の検出器を SAHI で分割推論（1080×1080 のタイル、重なり20%。重複は GREEDYNMM・IOS 0.5 で外接枠に合体） | MIT |
+
+```bash
+# YOLOX-S の重み（公式リリース 0.1.1rc0）。transformers のモデルは初回実行時に HF から自動取得される
+mkdir -p data/models
+curl -L -o data/models/yolox_s.onnx https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx
+sha256sum data/models/yolox_s.onnx  # c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063（2026-10-07 取得時）
+
+for d in rfdetr yolox rtdetrv2 dfine yolox-sahi rfdetr-sahi; do
+  python track.py --input data/mot/clips/118577.mp4 --start 0 --duration 15 --detector $d --output outputs/cmp_$d
+  python pitch.py --tracks outputs/cmp_$d/tracks.csv --calib data/raw/118577 --output outputs/cmp_$d/pitch
+  python eval_pitch.py --gsr data/gsr/118577/118577_1st.json --mot data/mot/118577.txt --calib data/raw/118577 \
+    --pitch-tracks outputs/cmp_$d/pitch/pitch_tracks.csv --output outputs/cmp_$d/eval
+done
+D="rfdetr yolox rtdetrv2 dfine yolox-sahi rfdetr-sahi"
+python eval_detect.py --mot data/mot/118577.txt \
+  --tracks $(for d in $D; do echo outputs/cmp_$d/tracks.csv; done) \
+  --pitch-tracks $(for d in $D; do echo outputs/cmp_$d/pitch/pitch_tracks.csv; done) \
+  --output outputs/cmp_eval/detect_eval.json
+```
+
+`eval_detect.py` は、画像上で MOT の正解枠（選手・GK 22人）と IoU 0.5 で照合する。正解に審判などは含まれないため、適合率は低めに出る。
+
 ## ソースと利用条件
 
 確認日：2026-10-06。下記は配布元・公式資料で確認した範囲であり、実行検証済みという意味ではない。
@@ -194,6 +227,7 @@ python eval_pitch.py --gsr data/gsr/118577/118577_1st.json --mot data/mot/118577
 | RF-DETR Small API [s5] | 検出出力は`supervision.Detections`。RGB入力とクラス名の対応を確認する |
 | Roboflow `trackers` [s6] | Apache-2.0のByteTrack再実装。`ByteTrackTracker.update(detections)`で接続 |
 | Supervision [s7] | MIT。描画・検出データの共通表現に使用 |
+| YOLOX / RT-DETRv2 / D-FINE / SAHI / onnxruntime | 2026-10-07 確認。YOLOX・RT-DETRv2・D-FINE は Apache-2.0（YOLOX は公式リリースの重み。RT-DETRv2・D-FINE は HF の transformers 形式の重みで、配布組織が論文著者の公式組織かは未確認）、SAHI・onnxruntime は MIT。比較（#15）だけに使う |
 | HF CLI [s3] / GitHub CLI [s8] / PyTorch [s9] | 取得・認証、新規リポジトリ作成、CPU実行環境の公式手順 |
 
 素材へのクレジット：SoccerTrack v2 — Atom Scott, Ikuma Uchida, Kento Kuroda, Yufi Kim, Keisuke Fujii。
