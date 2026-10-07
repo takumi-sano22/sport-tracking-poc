@@ -16,6 +16,7 @@ description: sport-tracking-poc 固有版（global の github-workflow を上書
 | #4 | 実動画での段階実行と `RESULT.md` | `docs/4-result` |
 | #5 | 結果ビューア `viewer.html`（#4 の後） | `feat/5-viewer` |
 | #11 | ピッチ座標（俯瞰xy）への変換と評価 | `feat/11-pitch` |
+| #15 | 検出器の比較（YOLOX-S ほか） | `feat/15-detectors` |
 
 ## 手順
 

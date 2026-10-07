@@ -2,6 +2,8 @@
 
 使い方:
     python track.py --input data/mot/clips/118577.mp4 --start 0 --duration 3 --output outputs/smoke
+    # 検出器の比較（#15）。既定は rfdetr
+    python track.py --input data/mot/clips/118577.mp4 --detector yolox --output outputs/cmp_yolox
 """
 
 import argparse
@@ -14,9 +16,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 import supervision as sv
-from rfdetr import RFDETRSmall
-from rfdetr.assets.coco_classes import COCO_CLASSES
 from trackers import ByteTrackTracker
+
+from detectors import NAMES, load_detector
 
 # PoC用の初期値（精度の根拠はない。IMPLEMENTATION.md §4）
 DETECTION_THRESHOLD = 0.10  # これ未満の検出は捨てる。低信頼側もByteTrackの2段目照合へ渡すため低めにする
@@ -39,15 +41,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start", type=float, default=0.0, help="開始秒（元クリップ先頭から）")
     parser.add_argument("--duration", type=float, default=15.0, help="処理する秒数")
     parser.add_argument("--output", required=True, help="出力ディレクトリ（空または未作成）")
+    parser.add_argument("--detector", choices=NAMES, default="rfdetr", help="人物検出器（比較用。既定 rfdetr）")
     return parser.parse_args()
-
-
-def person_class_id() -> int:
-    """COCO重みの predict が返す class_id は COCO_CLASSES のキー（0始まりの class_names とは別）。"""
-    ids = [k for k, v in COCO_CLASSES.items() if v == "person"]
-    if len(ids) != 1:
-        fail("COCOクラス表から person のIDを特定できません")
-    return ids[0]
 
 
 def draw_traces(frame: np.ndarray, history: dict, frame_index: int) -> None:
@@ -97,7 +92,10 @@ def main() -> None:
     # モデルと追跡器は1回だけ作り、全フレームを同じインスタンスへ順に渡す。
     # 読込失敗で中途半端な出力先を残さないよう、出力先の作成より前に読み込む
     t0 = time.perf_counter()
-    model = RFDETRSmall(device="cpu")
+    try:
+        detect = load_detector(args.detector, DETECTION_THRESHOLD)
+    except FileNotFoundError as e:
+        fail(str(e))
     load_sec = time.perf_counter() - t0
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -107,10 +105,9 @@ def main() -> None:
     if not writer.isOpened():
         fail(f"出力動画を作れません: {video_path}")
 
-    print(f"入力: {input_path} {width}x{height} {fps:.3f}fps 全{total_frames}フレーム")
+    print(f"入力: {input_path} {width}x{height} {fps:.3f}fps 全{total_frames}フレーム / 検出器: {args.detector}")
     print(f"区間: フレーム {start_frame}〜{end_frame - 1}（{end_frame - start_frame}フレーム）")
 
-    person_id = person_class_id()
     tracker = ByteTrackTracker(
         lost_track_buffer=LOST_TRACK_BUFFER,
         frame_rate=fps,
@@ -137,10 +134,9 @@ def main() -> None:
                     break
                 timestamp = frame_index / fps
 
-                # OpenCVはBGR、RF-DETRはRGB入力
+                # OpenCVはBGR、検出器はRGB入力（person だけに絞って返る）
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                detections = model.predict(rgb, threshold=DETECTION_THRESHOLD)
-                detections = detections[detections.class_id == person_id]
+                detections = detect(rgb)
                 # 空の検出も渡して追跡器の時間を進める
                 tracked = tracker.update(detections)
 
