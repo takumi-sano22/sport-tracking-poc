@@ -20,6 +20,11 @@ YOLOX_NMS_IOU = 0.45  # YOLOX の公式デモ（demo/ONNXRuntime）と同じ値
 HF_MODELS = {"rtdetrv2": "PekingU/rtdetr_v2_r18vd", "dfine": "ustc-community/dfine-small-coco"}
 SAHI_SLICE = 1080  # 縦（1080px）に合わせた正方形のタイル。モデル内の512への縮小が縦横とも約1/2で済む
 SAHI_OVERLAP = 0.2
+# タイル同士・全体推論との重複のまとめ方。SAHI の既定値を明示する（しきい値が0.1未満だと既定が NMS に変わるため）。
+# GREEDYNMM は重なった枠を外接枠に合体させるので、密集した別人の枠も1つになりうる
+SAHI_POSTPROCESS = "GREEDYNMM"
+SAHI_MATCH_METRIC = "IOS"
+SAHI_MATCH_THRESHOLD = 0.5
 
 
 def load_detector(name: str, threshold: float) -> Detector:
@@ -39,7 +44,10 @@ def _rfdetr(threshold: float) -> Detector:
     from rfdetr.assets.coco_classes import COCO_CLASSES
 
     # COCO重みの predict が返す class_id は COCO_CLASSES のキー（0始まりの class_names とは別）
-    person = [k for k, v in COCO_CLASSES.items() if v == "person"][0]
+    ids = [k for k, v in COCO_CLASSES.items() if v == "person"]
+    if len(ids) != 1:
+        raise ValueError("COCOクラス表から person のIDを特定できません")
+    person = ids[0]
     model = RFDETRSmall(device="cpu")
 
     def detect(rgb: np.ndarray) -> sv.Detections:
@@ -78,6 +86,7 @@ def _yolox(threshold: float) -> Detector:
         keep = score >= threshold
         xy, wh, score = xy[keep], wh[keep], score[keep]
         boxes = np.c_[xy - wh / 2, xy + wh / 2] / r
+        boxes = np.clip(boxes, 0, [w, h, w, h])  # 画面外へはみ出した枠を切り詰める（SAHI 経由と揃える）
         idx = cv2.dnn.NMSBoxes(np.c_[boxes[:, :2], boxes[:, 2:] - boxes[:, :2]].tolist(),
                                score.tolist(), threshold, YOLOX_NMS_IOU)
         idx = np.array(idx, dtype=int).reshape(-1)
@@ -92,7 +101,10 @@ def _hf(repo: str, threshold: float) -> Detector:
 
     processor = AutoImageProcessor.from_pretrained(repo)
     model = AutoModelForObjectDetection.from_pretrained(repo).eval()
-    person = [int(k) for k, v in model.config.id2label.items() if v == "person"][0]
+    ids = [int(k) for k, v in model.config.id2label.items() if v == "person"]
+    if len(ids) != 1:
+        raise ValueError(f"{repo} のクラス表から person のIDを特定できません")
+    person = ids[0]
 
     def detect(rgb: np.ndarray) -> sv.Detections:
         inputs = processor(images=rgb, return_tensors="pt")  # 前処理は配布元の設定どおり（640×640へ縮小）
@@ -145,7 +157,9 @@ def _sahi(base: Detector, threshold: float) -> Detector:
     def detect(rgb: np.ndarray) -> sv.Detections:
         res = get_sliced_prediction(rgb, model, slice_height=SAHI_SLICE, slice_width=SAHI_SLICE,
                                     overlap_height_ratio=SAHI_OVERLAP, overlap_width_ratio=SAHI_OVERLAP,
-                                    verbose=0)
+                                    postprocess_type=SAHI_POSTPROCESS,
+                                    postprocess_match_metric=SAHI_MATCH_METRIC,
+                                    postprocess_match_threshold=SAHI_MATCH_THRESHOLD, verbose=0)
         preds = res.object_prediction_list
         if not preds:
             return sv.Detections.empty()

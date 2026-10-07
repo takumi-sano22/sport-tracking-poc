@@ -189,10 +189,10 @@ python eval_pitch.py --gsr data/gsr/118577/118577_1st.json --mot data/mot/118577
 | 名前 | 内容 | ライセンス |
 |---|---|---|
 | `rfdetr` | RF-DETR Small（既定） | Apache-2.0 |
-| `yolox` | YOLOX-S（Megvii 公式 ONNX）を onnxruntime で実行 | Apache-2.0 / MIT |
+| `yolox` | YOLOX-S（Megvii 公式 ONNX）を onnxruntime で実行 | YOLOX：Apache-2.0、onnxruntime：MIT |
 | `rtdetrv2` | RT-DETRv2-S `PekingU/rtdetr_v2_r18vd`（transformers） | Apache-2.0 |
 | `dfine` | D-FINE-S `ustc-community/dfine-small-coco`（transformers） | Apache-2.0 |
-| `yolox-sahi` / `rfdetr-sahi` | 上の検出器を SAHI で分割推論（1080×1080 のタイル、重なり20%） | MIT |
+| `yolox-sahi` / `rfdetr-sahi` | 上の検出器を SAHI で分割推論（1080×1080 のタイル、重なり20%。重複は GREEDYNMM・IOS 0.5 で外接枠に合体） | MIT |
 
 ```bash
 # YOLOX-S の重み（公式リリース 0.1.1rc0）。transformers のモデルは初回実行時に HF から自動取得される
@@ -227,7 +227,7 @@ python eval_detect.py --mot data/mot/118577.txt \
 | RF-DETR Small API [s5] | 検出出力は`supervision.Detections`。RGB入力とクラス名の対応を確認する |
 | Roboflow `trackers` [s6] | Apache-2.0のByteTrack再実装。`ByteTrackTracker.update(detections)`で接続 |
 | Supervision [s7] | MIT。描画・検出データの共通表現に使用 |
-| YOLOX / RT-DETRv2 / D-FINE / SAHI / onnxruntime | 2026-10-07 確認。YOLOX・RT-DETRv2・D-FINE は Apache-2.0（重みは公式配布）、SAHI・onnxruntime は MIT。比較（#15）だけに使う |
+| YOLOX / RT-DETRv2 / D-FINE / SAHI / onnxruntime | 2026-10-07 確認。YOLOX・RT-DETRv2・D-FINE は Apache-2.0（YOLOX は公式リリースの重み。RT-DETRv2・D-FINE は HF の transformers 形式の重みで、配布組織が論文著者の公式組織かは未確認）、SAHI・onnxruntime は MIT。比較（#15）だけに使う |
 | HF CLI [s3] / GitHub CLI [s8] / PyTorch [s9] | 取得・認証、新規リポジトリ作成、CPU実行環境の公式手順 |
 
 素材へのクレジット：SoccerTrack v2 — Atom Scott, Ikuma Uchida, Kento Kuroda, Yufi Kim, Keisuke Fujii。

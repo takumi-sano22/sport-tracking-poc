@@ -1,4 +1,4 @@
-"""最小サッカー追跡PoC: RF-DETR Small（COCO）で人物検出 → ByteTrack → 枠・ID・軌跡付きMP4とCSV。
+"""最小サッカー追跡PoC: RF-DETR Small（COCO。--detector で比較用に差し替え可）で人物検出 → ByteTrack → 枠・ID・軌跡付きMP4とCSV。
 
 使い方:
     python track.py --input data/mot/clips/118577.mp4 --start 0 --duration 3 --output outputs/smoke
@@ -36,7 +36,7 @@ def fail(message: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="RF-DETR Small + ByteTrack による人物追跡PoC")
+    parser = argparse.ArgumentParser(description="人物検出（既定 RF-DETR Small）+ ByteTrack による人物追跡PoC")
     parser.add_argument("--input", required=True, help="入力MP4")
     parser.add_argument("--start", type=float, default=0.0, help="開始秒（元クリップ先頭から）")
     parser.add_argument("--duration", type=float, default=15.0, help="処理する秒数")
@@ -94,7 +94,7 @@ def main() -> None:
     t0 = time.perf_counter()
     try:
         detect = load_detector(args.detector, DETECTION_THRESHOLD)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         fail(str(e))
     load_sec = time.perf_counter() - t0
 
